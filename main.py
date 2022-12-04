@@ -29,9 +29,20 @@ def day3(filename: str):
     part2 = sum(priority(shared(lines[i:i + 3])) for i in range(0, len(lines), 3))
     print(f"day 3 - part 1: {part1}, part 2: {part2}")
 
+def day4(filename: str):
+    lines = [l.strip() for l in open(filename).read().split()]
+    ranges = [re.match(r"(\d+)-(\d+),(\d+)-(\d+)", line).groups() for line in lines]
+    ranges = [list(map(int, rs)) for rs in ranges]
+    contains = lambda a, b, c, d : a <= c <= d <= b
+    overlap = lambda a, b, c, d : a <= c <= b <= d
+    part1 = sum(1 if contains(a, b, x, y) or contains(x, y, a, b) else 0 for a, b, x, y in ranges)
+    part2 = sum(1 if contains(a, b, x, y) or contains(x, y, a, b) or overlap(a, b, x, y) or overlap(x, y, a, b) else 0 for a, b, x, y in ranges)
+    print(f"day 4 - part 1: {part1}, part 2: {part2}")
+
 if __name__ == '__main__':
     day1("input/day1.txt")
     day2("input/day2.txt")
     day3("input/day3.txt")
+    day4("input/day4.txt")
 
 
