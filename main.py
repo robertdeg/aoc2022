@@ -30,11 +30,11 @@ def day3(filename: str):
     print(f"day 3 - part 1: {part1}, part 2: {part2}")
 
 def day4(filename: str):
-    lines = [l.strip() for l in open(filename).read().split()]
-    ranges = [re.match(r"(\d+)-(\d+),(\d+)-(\d+)", line).groups() for line in lines]
-    ranges = [list(map(int, rs)) for rs in ranges]
+    lines = (l.strip() for l in open(filename).read().split())
+    ranges = (re.match(r"(\d+)-(\d+),(\d+)-(\d+)", line).groups() for line in lines)
+    ranges = [(int(a), int(b), int(c), int(d)) for a, b, c, d in ranges]
     contains = lambda a, b, c, d : a <= c <= d <= b or c <= a <= b <= d
-    overlaps = lambda a, b, c, d : c <= a <= d or c <= b <= d or a <= c <= b or a <= d <= b
+    overlaps = lambda a, b, c, d : not(b < c or d < a)
     part1 = sum(1 for a, b, x, y in ranges if contains(a, b, x, y))
     part2 = sum(1 for a, b, x, y in ranges if overlaps(a, b, x, y))
     print(f"day 4 - part 1: {part1}, part 2: {part2}")
