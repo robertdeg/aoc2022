@@ -1,5 +1,5 @@
 import collections
-from itertools import zip_longest, starmap
+from itertools import zip_longest, starmap, count
 import operator as ops
 from functools import reduce, partial
 from collections import Counter
@@ -38,15 +38,6 @@ def day4(filename: str):
     part2 = sum(not(b < c or d < a) for a, b, c, d in ranges)
     print(f"day 4 - part 1: {part1}, part 2: {part2}")
 
-def dropwhile(predicate, iterable):
-    # dropwhile(lambda x: x<5, [1,4,6,4,1]) --> 6 4 1
-    iterable = iter(iterable)
-    for x in iterable:
-        if not predicate(x):
-            yield x
-            break
-    for x in iterable:
-        yield x
 def day5(filename: str):
     def move(source: list, dest: list, count: int, reverse=True) -> None:
         stack = source[-count:]
@@ -68,11 +59,15 @@ def day5(filename: str):
 
     print(f"day 5 - part 1: {part1}, part 2: {part2}")
 
+def day6(filename: str):
+    data = open(filename).read().strip()
+    part1 = next(idx for idx, tup in enumerate(zip(*(data[i:] for i in range(4)))) if len(set(tup)) == 4)
+    part2 = next(idx for idx, tup in enumerate(zip(*(data[i:] for i in range(14)))) if len(set(tup)) == 14)
+
+    print(f"day 6 - part 1: {part1 + 4}, part 2: {part2 + 14}")
+
 if __name__ == '__main__':
-    day1("input/day1.txt")
-    day2("input/day2.txt")
-    day3("input/day3.txt")
-    day4("input/day4.txt")
-    day5("input/day5.txt")
+    for idx, solver in zip(count(1), (day1, day2, day3, day4, day5, day6)):
+        solver(f"input/day{idx}.txt")
 
 
