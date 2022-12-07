@@ -1,5 +1,5 @@
 import collections
-from itertools import zip_longest, starmap, count
+from itertools import zip_longest, starmap, count, chain
 import operator as ops
 from functools import reduce, partial
 from collections import Counter
@@ -61,13 +61,45 @@ def day5(filename: str):
 
 def day6(filename: str):
     data = open(filename).read().strip()
-    part1 = next(idx for idx, tup in enumerate(zip(*(data[i:] for i in range(4)))) if len(set(tup)) == 4)
-    part2 = next(idx for idx, tup in enumerate(zip(*(data[i:] for i in range(14)))) if len(set(tup)) == 14)
-
+    part1 = next(idx for idx, xs in enumerate(zip(*(data[i:] for i in range(4)))) if len(set(xs)) == 4)
+    part2 = next(idx for idx, xs in enumerate(zip(*(data[i:] for i in range(14)))) if len(set(xs)) == 14)
     print(f"day 6 - part 1: {part1 + 4}, part 2: {part2 + 14}")
 
+def day7(filename: str):
+    def get(commands) -> (dict, int):
+        next(commands) # skip '$ ls'
+        desc = dict(files = list(), subdirs = dict(), size = 0)
+        for line in commands:
+            cd = re.match(r'\$ cd (.*)', line)
+            if cd:
+                dir = cd.group(1)
+                if dir == '..':
+                    break
+                else:
+                    desc['subdirs'][dir], sz = get(commands)
+                    desc['size'] += sz
+            else: # dir or file entry
+                xs, ys = line.split(' ')
+                if xs != 'dir':
+                    desc['files'].append( (ys, int(xs)))
+                    desc['size'] += int(xs)
+
+        return desc, desc['size']
+
+    def totalsize(name: str, dir: dict):
+        yield from chain.from_iterable(totalsize(v, desc) for v, desc in dir['subdirs'].items())
+        yield name, dir['size']
+
+    data = map(str.strip, open(filename).readlines())
+    next(data)
+    fs, total = get(data)
+    minsize = total - 40000000
+    part1 = sum(sz for name, sz in totalsize('/', fs) if sz < 100000)
+    part2 = min(sz for name, sz in totalsize('/', fs) if sz >= minsize)
+    print(f"day 7 - part 1: {part1}, part 7: {part2}")
+
 if __name__ == '__main__':
-    for idx, solver in zip(count(1), (day1, day2, day3, day4, day5, day6)):
+    for idx, solver in zip(count(1), (day1, day2, day3, day4, day5, day6, day7)):
         solver(f"input/day{idx}.txt")
 
 
