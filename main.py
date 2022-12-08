@@ -1,5 +1,6 @@
 import collections
-from itertools import zip_longest, starmap, count, chain
+from collections import defaultdict
+from itertools import zip_longest, starmap, count, chain, islice, takewhile, accumulate, tee, dropwhile, repeat
 import operator as ops
 from functools import reduce, partial
 from collections import Counter
@@ -8,7 +9,7 @@ import re
 
 def day1(filename: str):
     cals = sorted(map(lambda s: sum(map(int, s.split('\n'))), open(filename).read().split('\n\n')), reverse=True)
-    print(f"day 1 - part 1: {cals[0]}, part 2: {sum(cals[:3])}")
+    return cals[0], sum(cals[:3])
 
 def day2(filename: str):
     add_tups = lambda xs, ys: map(ops.add, xs, ys)
@@ -19,7 +20,7 @@ def day2(filename: str):
     chars = (l.split() for l in open(filename).read().split('\n'))
     scores = ((points[a][b], points[a][plays[a][b]]) for a, b in chars)
     part1, part2 = reduce(add_tups, scores)
-    print(f"day 2 - part 1: {part1}, part 2: {part2}")
+    return part1, part2
 
 def day3(filename: str):
     split = lambda s : (s[:len(s) // 2] ,s[len(s) // 2:])
@@ -28,7 +29,7 @@ def day3(filename: str):
     lines = [l.strip() for l in open(filename).read().split()]
     part1 = sum(priority(shared(split(xs))) for xs in lines)
     part2 = sum(priority(shared(lines[i:i + 3])) for i in range(0, len(lines), 3))
-    print(f"day 3 - part 1: {part1}, part 2: {part2}")
+    return part1, part2
 
 def day4(filename: str):
     lines = (l.strip() for l in open(filename).read().split())
@@ -36,7 +37,7 @@ def day4(filename: str):
     ranges = [(int(a), int(b), int(c), int(d)) for a, b, c, d in ranges]
     part1 = sum(a <= c <= d <= b or c <= a <= b <= d for a, b, c, d in ranges)
     part2 = sum(not(b < c or d < a) for a, b, c, d in ranges)
-    print(f"day 4 - part 1: {part1}, part 2: {part2}")
+    return part1, part2
 
 def day5(filename: str):
     def move(source: list, dest: list, count: int, reverse=True) -> None:
@@ -57,49 +58,84 @@ def day5(filename: str):
     collections.deque(starmap(lambda n, src, dst : move(stacks[src-1], stacks[dst-1], n, reverse=False), moves), maxlen=0)
     part2 = ''.join([stack[-1] for stack in stacks])
 
-    print(f"day 5 - part 1: {part1}, part 2: {part2}")
+    return part1, part2
 
 def day6(filename: str):
     data = open(filename).read().strip()
     part1 = next(idx for idx, xs in enumerate(zip(*(data[i:] for i in range(4)))) if len(set(xs)) == 4)
     part2 = next(idx for idx, xs in enumerate(zip(*(data[i:] for i in range(14)))) if len(set(xs)) == 14)
-    print(f"day 6 - part 1: {part1 + 4}, part 2: {part2 + 14}")
+    return part1, part2
 
 def day7(filename: str):
-    def get(commands) -> (dict, int):
+    def parse(commands) -> dict:
+        result = dict()
         next(commands) # skip '$ ls'
-        desc = dict(files = list(), subdirs = dict(), size = 0)
-        for line in commands:
-            cd = re.match(r'\$ cd (.*)', line)
-            if cd:
-                dir = cd.group(1)
-                if dir == '..':
-                    break
-                else:
-                    desc['subdirs'][dir], sz = get(commands)
-                    desc['size'] += sz
-            else: # dir or file entry
-                xs, ys = line.split(' ')
-                if xs != 'dir':
-                    desc['files'].append( (ys, int(xs)))
-                    desc['size'] += int(xs)
+        t1, t2 = tee(commands)
+        ls = map(str.split, takewhile(lambda s : not s.startswith('$'), t1))
+        size = sum(int(size) for size, _ in ls if size.isnumeric())
+        commands = dropwhile(lambda s : not s.startswith('$'), t2)
+        cd = re.match(r'\$ cd (.*)', next(commands, '$ cd ..')).group(1)
+        while cd != '..':
+            result[cd] = parse(commands)
+            size += result[cd]['size']
+            cd = re.match(r'\$ cd (.*)', next(commands, '$ cd ..')).group(1)
 
-        return desc, desc['size']
+        result['size'] = size
+        return result
 
     def totalsize(name: str, dir: dict):
-        yield from chain.from_iterable(totalsize(v, desc) for v, desc in dir['subdirs'].items())
+        yield from chain.from_iterable(totalsize(v, desc) for v, desc in dir.items() if type(desc) is dict)
         yield name, dir['size']
 
     data = map(str.strip, open(filename).readlines())
     next(data)
-    fs, total = get(data)
-    minsize = total - 40000000
+    fs = parse(data)
+    minsize = fs['size'] - 40000000
     part1 = sum(sz for name, sz in totalsize('/', fs) if sz < 100000)
     part2 = min(sz for name, sz in totalsize('/', fs) if sz >= minsize)
-    print(f"day 7 - part 1: {part1}, part 7: {part2}")
+    return part1, part2
+
+def day8(filename: str):
+    data = [s.strip() for s in open(filename).readlines()]
+    N = len(data)
+    trees = dict(((i, j), int(height)) for i in range(N) for j, height in enumerate(data[i]))
+    left = [[(i, j) for j in range(N)] for i in range(N)]
+    right = [[(i, j - 1) for j in range(N, 0, -1)] for i in range(N)]
+    top = [[(i, j) for i in range(N)] for j in range(N)]
+    bottom = [[(i - 1, j) for i in range(N, 0, -1)] for j in range(N)]
+
+    def visible(state: (set, int), pos: (int, int)) -> (set, int):
+        xs, minheight = state
+        if trees[pos] > minheight:
+            xs.add(pos)
+        return (xs, max(minheight, trees[pos]))
+
+    part1 = len(reduce(set.union, (reduce(visible, xs, (set(), -1))[0] for xs in left + right + top + bottom)))
+
+    def count_upto(pred, it):
+        result = 0
+        for val in it:
+            result += 1
+            if not pred(val):
+                break
+        return result
+
+    scores = dict()
+    def viewrange(row: int, col: int) -> int:
+        treeheight = trees[(row, col)]
+        viewable = lambda h : h < treeheight
+        ls = count_upto(viewable, (trees[(r, c)] for r, c in left[row] if c > col))
+        rs = count_upto(viewable, (trees[(r, c)] for r, c in right[row] if c < col))
+        ts = count_upto(viewable, (trees[(r, c)] for r, c in top[col] if r > row))
+        bs = count_upto(viewable, (trees[(r, c)] for r, c in bottom[col] if r < row))
+        return ls * rs * ts * bs
+
+    part2 = max(viewrange(row, col) for row, col in trees)
+    return part1, part2
 
 if __name__ == '__main__':
-    for idx, solver in zip(count(1), (day1, day2, day3, day4, day5, day6, day7)):
-        solver(f"input/day{idx}.txt")
+    for idx, solver in zip(count(1), (day1, day2, day3, day4, day5, day6, day7, day8)):
+        part1, part2 = solver(f"input/day{idx}.txt")
+        print(f"day {idx} - part 1: {part1}, part 2: {part2}")
 
 
