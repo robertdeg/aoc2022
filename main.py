@@ -1,4 +1,5 @@
 import collections
+import operator
 from collections import defaultdict
 from itertools import zip_longest, starmap, count, chain, islice, takewhile, accumulate, tee, dropwhile, repeat
 import operator as ops
@@ -7,9 +8,11 @@ from collections import Counter
 import numpy as np
 import re
 
+
 def day1(filename: str):
     cals = sorted(map(lambda s: sum(map(int, s.split('\n'))), open(filename).read().split('\n\n')), reverse=True)
     return cals[0], sum(cals[:3])
+
 
 def day2(filename: str):
     add_tups = lambda xs, ys: map(ops.add, xs, ys)
@@ -22,6 +25,7 @@ def day2(filename: str):
     part1, part2 = reduce(add_tups, scores)
     return part1, part2
 
+
 def day3(filename: str):
     split = lambda s : (s[:len(s) // 2] ,s[len(s) // 2:])
     shared = lambda xs : next(iter(reduce(set.intersection, map(set, xs))))
@@ -31,6 +35,7 @@ def day3(filename: str):
     part2 = sum(priority(shared(lines[i:i + 3])) for i in range(0, len(lines), 3))
     return part1, part2
 
+
 def day4(filename: str):
     lines = (l.strip() for l in open(filename).read().split())
     ranges = (re.match(r"(\d+)-(\d+),(\d+)-(\d+)", line).groups() for line in lines)
@@ -38,6 +43,7 @@ def day4(filename: str):
     part1 = sum(a <= c <= d <= b or c <= a <= b <= d for a, b, c, d in ranges)
     part2 = sum(not(b < c or d < a) for a, b, c, d in ranges)
     return part1, part2
+
 
 def day5(filename: str):
     def move(source: list, dest: list, count: int, reverse=True) -> None:
@@ -60,11 +66,13 @@ def day5(filename: str):
 
     return part1, part2
 
+
 def day6(filename: str):
     data = open(filename).read().strip()
     part1 = next(idx for idx, xs in enumerate(zip(*(data[i:] for i in range(4)))) if len(set(xs)) == 4)
     part2 = next(idx for idx, xs in enumerate(zip(*(data[i:] for i in range(14)))) if len(set(xs)) == 14)
     return part1, part2
+
 
 def day7(filename: str):
     def parse(commands) -> dict:
@@ -94,6 +102,7 @@ def day7(filename: str):
     part1 = sum(sz for name, sz in totalsize('/', fs) if sz < 100000)
     part2 = min(sz for name, sz in totalsize('/', fs) if sz >= minsize)
     return part1, part2
+
 
 def day8(filename: str):
     data = [s.strip() for s in open(filename).readlines()]
@@ -133,9 +142,40 @@ def day8(filename: str):
     part2 = max(viewrange(row, col) for row, col in trees)
     return part1, part2
 
+def day9(filename: str):
+    def add_tup(t1, t2):
+        return tuple(map(operator.add, t1, t2))
+    def move(head, tail):
+        r = tail[0] + max(min(head[0] - tail[0], 1), -1)
+        c = tail[1] + max(min(head[1] - tail[1], 1), -1)
+        return tail if (r, c) == head else (r, c)
+
+    def movelong(head, tail):
+        return list(accumulate(tailpos, move, initial=head))[1:]
+
+    deltas = dict(U = (1, 0), D = (-1, 0), L = (0, -1), R = (0, 1))
+    data = (s.strip().split(' ') for s in open(filename).readlines())
+    steps = [(deltas[x], int(y)) for x, y in data]
+
+    tailpos = [(0, 0)]
+    positions = {tailpos[-1]}
+    for head in accumulate(chain.from_iterable(repeat(step, n) for step, n in steps), add_tup, initial=(0, 0)):
+        tailpos = movelong(head, tailpos)
+        positions.add(tailpos[-1])
+    part1 = len(positions)
+
+    tailpos = [(0, 0)] * 9
+    positions = {tailpos[-1]}
+    for head in accumulate(chain.from_iterable(repeat(step, n) for step, n in steps), add_tup, initial=(0, 0)):
+        tailpos = movelong(head, tailpos)
+        positions.add(tailpos[-1])
+    part2 = len(positions)
+
+    return part1, part2
+
 if __name__ == '__main__':
-    for idx, solver in zip(count(1), (day1, day2, day3, day4, day5, day6, day7, day8)):
-        part1, part2 = solver(f"input/day{idx}.txt")
-        print(f"day {idx} - part 1: {part1}, part 2: {part2}")
+    for idx, solver in zip(count(1), (day1, day2, day3, day4, day5, day6, day7, day8, day9)):
+        p1, p2 = solver(f"input/day{idx}.txt")
+        print(f"day {idx} - part 1: {p1}, part 2: {p2}")
 
 
