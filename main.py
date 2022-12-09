@@ -1,3 +1,4 @@
+from utils.coordinates import vector
 import collections
 import operator
 from collections import defaultdict
@@ -99,6 +100,7 @@ def day7(filename: str):
     next(data)
     fs = parse(data)
     minsize = fs['size'] - 40000000
+    xs = list(totalsize('/', fs))
     part1 = sum(sz for name, sz in totalsize('/', fs) if sz < 100000)
     part2 = min(sz for name, sz in totalsize('/', fs) if sz >= minsize)
     return part1, part2
@@ -143,39 +145,28 @@ def day8(filename: str):
     return part1, part2
 
 def day9(filename: str):
-    def add_tup(t1, t2):
-        return tuple(map(operator.add, t1, t2))
     def move(head, tail):
-        r = tail[0] + max(min(head[0] - tail[0], 1), -1)
-        c = tail[1] + max(min(head[1] - tail[1], 1), -1)
-        return tail if (r, c) == head else (r, c)
+        if any(abs(head - tail) > 1):
+            return tail + (head - tail).clip(-1, 1)
+        else:
+            return tail
 
     def movelong(head, tail):
-        return list(accumulate(tailpos, move, initial=head))[1:]
+        return list(accumulate(tail, move, initial=head))[1:]
 
-    deltas = dict(U = (1, 0), D = (-1, 0), L = (0, -1), R = (0, 1))
+    deltas = dict(U = vector(1, 0), D = vector(-1, 0), L = vector(0, -1), R = vector(0, 1))
     data = (s.strip().split(' ') for s in open(filename).readlines())
     steps = [(deltas[x], int(y)) for x, y in data]
 
-    tailpos = [(0, 0)]
-    positions = {tailpos[-1]}
-    for head in accumulate(chain.from_iterable(repeat(step, n) for step, n in steps), add_tup, initial=(0, 0)):
-        tailpos = movelong(head, tailpos)
-        positions.add(tailpos[-1])
-    part1 = len(positions)
+    def visited(n: int) -> set:
+        heads = accumulate(chain.from_iterable(repeat(step, n) for step, n in steps), operator.add, initial=vector(0, 0))
+        tails = accumulate(heads, lambda tail, head: movelong(head, tail), initial=[vector(0, 0)] * n)
+        return set(tail[-1] for tail in tails)
 
-    tailpos = [(0, 0)] * 9
-    positions = {tailpos[-1]}
-    for head in accumulate(chain.from_iterable(repeat(step, n) for step, n in steps), add_tup, initial=(0, 0)):
-        tailpos = movelong(head, tailpos)
-        positions.add(tailpos[-1])
-    part2 = len(positions)
-
-    return part1, part2
+    return len(visited(1)), len(visited(9))
 
 if __name__ == '__main__':
     for idx, solver in zip(count(1), (day1, day2, day3, day4, day5, day6, day7, day8, day9)):
         p1, p2 = solver(f"input/day{idx}.txt")
         print(f"day {idx} - part 1: {p1}, part 2: {p2}")
-
 
