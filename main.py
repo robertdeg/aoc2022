@@ -167,15 +167,15 @@ def day9(filename: str):
     return len(part1), len(part2)
 
 def day10(filename: str):
-    data = [re.match(r'(noop)|addx (-?\d+)', s.strip()).groups() for s in open(filename).readlines()]
-    instr = chain.from_iterable(starmap(lambda x, y : [0, int(y)] if x is None else [0], data))
-    xs = list(accumulate(instr, operator.add, initial=1))
+    data = map(re.Match.groups, re.finditer(r'(noop)|addx (-?\d+)', open(filename).read()))
+    deltas = chain.from_iterable(starmap(lambda x, y : [0, int(y)] if x is None else [0], data))
+    xs = list(accumulate(deltas, operator.add, initial=1))
     part1 = sum(x * i if (i - 20) % 40 == 0 else 0 for x, i in zip(xs, count(1)))
 
     sprites = ((x - 1, x, x + 1) for x in xs)
-    part2 = ['@' if t % 40 in sprite else '.' for t, sprite in zip(count(0), sprites)]
+    part2 = ''.join('@' if t % 40 in sprite else '.' for t, sprite in zip(count(0), sprites))
 
-    return part1, '\n' + '\n'.join(''.join(part2[i:i+40]) for i in range(0, 240, 40))
+    return part1, '\n' + '\n'.join(part2[i:i+40] for i in range(0, 240, 40))
 
 if __name__ == '__main__':
     for idx, solver in zip(count(10, -1), reversed((day1, day2, day3, day4, day5, day6, day7, day8, day9, day10))):
