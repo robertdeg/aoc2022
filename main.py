@@ -167,8 +167,8 @@ def day9(filename: str):
     return len(part1), len(part2)
 
 def day10(filename: str):
-    data = map(re.Match.groups, re.finditer(r'(noop)|addx (-?\d+)', open(filename).read()))
-    deltas = chain.from_iterable(starmap(lambda x, y : [0, int(y)] if x is None else [0], data))
+    data = map(re.Match.groups, re.finditer(r'noop|addx (-?\d+)', open(filename).read()))
+    deltas = chain.from_iterable(starmap(lambda x : [0] if x is None else [0, int(x)], data))
     xs = list(accumulate(deltas, operator.add, initial=1))
     part1 = sum(x * i if (i - 20) % 40 == 0 else 0 for x, i in zip(xs, count(1)))
 
@@ -177,8 +177,15 @@ def day10(filename: str):
 
     return part1, '\n' + '\n'.join(part2[i:i+40] for i in range(0, 240, 40))
 
+def day11(filename: str):
+    data = open(filename).read()
+    return 0, 0
+
 if __name__ == '__main__':
-    for idx, solver in zip(count(10, -1), reversed((day1, day2, day3, day4, day5, day6, day7, day8, day9, day10))):
+    solvers = [(key, value) for key, value in globals().items() if key.startswith("day") and callable(value)]
+    solvers = sorted(((int(key.split('day')[-1]), value) for key, value in solvers), reverse=True)
+
+    for idx, solver in solvers:
         p1, p2 = solver(f"input/day{idx}.txt")
         print(f"day {idx} - part 1: {p1}, part 2: {p2}")
 
