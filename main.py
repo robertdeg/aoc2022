@@ -1,4 +1,5 @@
 from utils.coordinates import vector
+from utils.iteration import overwrite
 import collections
 import operator
 from collections import defaultdict
@@ -149,24 +150,35 @@ def day9(filename: str):
         if any(abs(head - tail) > 1):
             return tail + (head - tail).clip(-1, 1)
         else:
-            return tail
-
-    def movelong(head, tail):
-        return list(accumulate(tail, move, initial=head))[1:]
+            raise StopIteration
 
     deltas = dict(U = vector(1, 0), D = vector(-1, 0), L = vector(0, -1), R = vector(0, 1))
     data = (s.strip().split(' ') for s in open(filename).readlines())
-    steps = [(deltas[x], int(y)) for x, y in data]
+    steps = ((deltas[x], int(y)) for x, y in data)
 
-    def visited(n: int) -> set:
-        heads = accumulate(chain.from_iterable(repeat(step, n) for step, n in steps), operator.add, initial=vector(0, 0))
-        tails = accumulate(heads, lambda tail, head: movelong(head, tail), initial=[vector(0, 0)] * n)
-        return set(tail[-1] for tail in tails)
+    heads = accumulate(chain.from_iterable(repeat(step, n) for step, n in steps), operator.add, initial=vector(0, 0))
+    tail = [vector(0, 0)] * 9
+    part1, part2 = set(), set()
+    for head in heads:
+        overwrite(tail, move, head)
+        part1.add(tail[0])
+        part2.add(tail[-1])
 
-    return len(visited(1)), len(visited(9))
+    return len(part1), len(part2)
+
+def day10(filename: str):
+    data = [re.match(r'(noop)|addx (-?\d+)', s.strip()).groups() for s in open(filename).readlines()]
+    instr = chain.from_iterable(starmap(lambda x, y : [0, int(y)] if x is None else [0], data))
+    xs = list(accumulate(instr, operator.add, initial=1))
+    part1 = sum(x * i if (i - 20) % 40 == 0 else 0 for x, i in zip(xs, count(1)))
+
+    sprites = ((x - 1, x, x + 1) for x in xs)
+    part2 = ['@' if t % 40 in sprite else '.' for t, sprite in zip(count(0), sprites)]
+
+    return part1, '\n' + '\n'.join(''.join(part2[i:i+40]) for i in range(0, 240, 40))
 
 if __name__ == '__main__':
-    for idx, solver in zip(count(1), (day1, day2, day3, day4, day5, day6, day7, day8, day9)):
+    for idx, solver in zip(count(10, -1), reversed((day1, day2, day3, day4, day5, day6, day7, day8, day9, day10))):
         p1, p2 = solver(f"input/day{idx}.txt")
         print(f"day {idx} - part 1: {p1}, part 2: {p2}")
 
