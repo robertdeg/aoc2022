@@ -5,7 +5,7 @@ from utils.iteration import overwrite
 import collections
 import operator
 from collections import defaultdict
-from itertools import zip_longest, starmap, count, chain, islice, takewhile, accumulate, tee, dropwhile, repeat
+from itertools import zip_longest, starmap, count, chain, islice, takewhile, accumulate, tee, dropwhile, repeat, pairwise
 import operator as ops
 from functools import reduce, partial, cmp_to_key
 from collections import Counter
@@ -188,13 +188,12 @@ def day11(filename: str):
     class monkey:
         def __init__(self, op, modulus, iftrue, iffalse):
             self.op = lambda old : eval(op)
-            self.modulus = int(modulus)
-            self.target = lambda level: int(iftrue) if level % self.modulus == 0 else int(iffalse)
+            self.target = lambda level: int(iftrue) if level % int(modulus) == 0 else int(iffalse)
 
 
     pattern = re.compile(r'\: ([^\n]*)[^=]*= ([^\n]*)\n[^\d]*(\d+)[^\d]*(\d+)[^\d]*(\d+)')
     matches = pattern.finditer(open(filename).read())
-    items, ops, divs, to_true, to_false = list(zip(*(match.groups() for match in matches)))
+    items, ops, divs, to_true, to_false = zip(*(match.groups() for match in matches))
 
     monkeys = list(starmap(monkey, zip(ops, divs, to_true, to_false)))
     items = list(chain.from_iterable([(idx, int(level)) for level in s.split(', ')] for idx, s in enumerate(items)))
@@ -254,6 +253,38 @@ def day13(filename: str):
     part2 = reduce(operator.mul, (i + 1 for i, ls in enumerate(xs) if ls == [2] or ls == [6]))
     return part1, part2
 
+def day14(filename: str):
+    data = [[eval(line) for line in s.split(' -> ')] for s in open(filename).readlines()]
+    cave = dict()
+    for line in data:
+        for (ax, ay), (bx, by) in pairwise(line):
+            cave.update({(x, ay) : '#' for x in range(min(ax, bx), max(ax, bx) + 1)})
+            cave.update({(ax, y) : '#' for y in range(min(ay, by), max(ay, by) + 1)})
+
+    def fall(x, y, blocked: bool = False):
+        if not blocked and not any(ay > y for ax, ay in cave if ax == x):
+            return False
+        elif (x, y + 1) not in cave:
+            return fall(x, y + 1, blocked)
+        elif (x - 1, y + 1) not in cave:
+            return fall(x - 1, y + 1, blocked)
+        elif (x + 1, y + 1) not in cave:
+            return fall(x + 1, y + 1, blocked)
+        else:
+            cave[(x, y)] = 'o'
+            return True
+    part1 = 0
+    while fall(500, 0):
+        part1 += 1
+
+    maxy = max(y for x, y in cave) + 2
+    cave.update({(x, maxy) : '#' for x in range(500 - maxy - 1, 500 + maxy + 2)})
+
+    part2 = part1
+    while (500, 0) not in cave and fall(500, 0, True):
+        part2 += 1
+
+    return part1, part2
 
 if __name__ == '__main__':
     solvers = [(key, value) for key, value in globals().items() if key.startswith("day") and callable(value)]
