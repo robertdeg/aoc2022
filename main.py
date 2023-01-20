@@ -1,15 +1,20 @@
+import bisect
 import math
+import time
+
+import numpy as np
+import sympy
+from sympy import symbols
 from utils.coordinates import vector
-from dataclasses import dataclass
 from utils.iteration import overwrite
 import collections
 import operator
-from collections import defaultdict
-from itertools import zip_longest, starmap, count, chain, islice, takewhile, accumulate, tee, dropwhile, repeat, pairwise
+from itertools import zip_longest, starmap, count, chain, islice, takewhile, accumulate, tee, dropwhile, repeat, \
+    pairwise, combinations, permutations, cycle, product
 import operator as ops
 from functools import reduce, partial, cmp_to_key
 from collections import Counter
-import numpy as np
+import queue as Q
 import re
 
 
@@ -187,9 +192,8 @@ def day10(filename: str):
 def day11(filename: str):
     class monkey:
         def __init__(self, op, modulus, iftrue, iffalse):
-            self.op = lambda old : eval(op)
+            self.op = lambda old: eval(op)
             self.target = lambda level: int(iftrue) if level % int(modulus) == 0 else int(iffalse)
-
 
     pattern = re.compile(r'\: ([^\n]*)[^=]*= ([^\n]*)\n[^\d]*(\d+)[^\d]*(\d+)[^\d]*(\d+)')
     matches = pattern.finditer(open(filename).read())
@@ -199,19 +203,30 @@ def day11(filename: str):
     items = list(chain.from_iterable([(idx, int(level)) for level in s.split(', ')] for idx, s in enumerate(items)))
     lcm = reduce(math.lcm, map(int, divs))
 
-    def throw(round: int, monkey_idx: int, worry_level: int, div: int = 3):
-        while True:
-            yield round, monkey_idx, worry_level
+    def throw(monkey_idx: int, worry_level: int, rounds: int = 20, div: int = 3):
+        round = 0
+        visited = dict()
+        counts = Counter()
+        while round < rounds:
+            counts = counts + Counter([monkey_idx])
+            if (monkey_idx, worry_level) in visited:
+                prev_round, prev_counts = visited[(monkey_idx, worry_level)]
+                skip = (rounds - 1 - round) // (round - prev_round)
+                counts = Counter({key: counts[key] + skip * (counts[key] - prev_counts[key]) for key in counts})
+                round += skip * (round - prev_round)
+                visited.clear()
+            visited[(monkey_idx, worry_level)] = round, counts
+
             worry_level = monkeys[monkey_idx].op(worry_level) // div % lcm
             next_monkey_idx = monkeys[monkey_idx].target(worry_level)
             if next_monkey_idx < monkey_idx:
                 round += 1
             monkey_idx = next_monkey_idx
+        return counts
 
-    part1 = Counter(i for j, lvl in items for _, i, _ in takewhile(lambda t: t[0] < 20, throw(0, j, lvl)))
-    part2 = Counter(i for j, lvl in items for _, i, _ in takewhile(lambda t: t[0] < 10000, throw(0, j, lvl, 1)))
-
-    business = lambda counts : reduce(operator.mul, sorted(counts.values(), reverse=True)[:2])
+    part1 = reduce(operator.add, (throw(j, lvl, 20, 3) for j, lvl in items))
+    part2 = reduce(operator.add, (throw(j, lvl, 10000, 1) for j, lvl in items))
+    business = lambda counts: reduce(operator.mul, sorted(counts.values(), reverse=True)[:2])
 
     return business(part1), business(part2)
 
@@ -253,13 +268,14 @@ def day13(filename: str):
     part2 = reduce(operator.mul, (i + 1 for i, ls in enumerate(xs) if ls == [2] or ls == [6]))
     return part1, part2
 
-def day14(filename: str):
+
+def day14(filename: str):  # TODO: use DFS to solve part 2
     data = [[eval(line) for line in s.split(' -> ')] for s in open(filename).readlines()]
     cave = dict()
     for line in data:
         for (ax, ay), (bx, by) in pairwise(line):
-            cave.update({(x, ay) : '#' for x in range(min(ax, bx), max(ax, bx) + 1)})
-            cave.update({(ax, y) : '#' for y in range(min(ay, by), max(ay, by) + 1)})
+            cave.update({(x, ay): '#' for x in range(min(ax, bx), max(ax, bx) + 1)})
+            cave.update({(ax, y): '#' for y in range(min(ay, by), max(ay, by) + 1)})
 
     def fall(x, y, blocked: bool = False):
         if not blocked and not any(ay > y for ax, ay in cave if ax == x):
@@ -273,12 +289,13 @@ def day14(filename: str):
         else:
             cave[(x, y)] = 'o'
             return True
+
     part1 = 0
     while fall(500, 0):
         part1 += 1
 
     maxy = max(y for x, y in cave) + 2
-    cave.update({(x, maxy) : '#' for x in range(500 - maxy - 1, 500 + maxy + 2)})
+    cave.update({(x, maxy): '#' for x in range(500 - maxy - 1, 500 + maxy + 2)})
 
     part2 = part1
     while (500, 0) not in cave and fall(500, 0, True):
@@ -286,10 +303,520 @@ def day14(filename: str):
 
     return part1, part2
 
+
+def day15(filename: str):
+    class rectangle:  # TODO: move to some other file
+        def __init__(self, sx, sy, xb, yb):
+            self.topleft = sx, sy
+            self.topright = xb, sy
+            self.bottomleft = sx, yb
+            self.bottomright = xb, yb
+            self.mid = (xb + sx) // 2, (yb + sy) // 2
+
+        def external(self, outer):
+            up = rectangle(*outer.topleft, *map(min, outer.bottomright, self.topright))
+            down = rectangle(*map(max, outer.topleft, self.bottomleft), *outer.bottomright)
+            left = rectangle(*map(max, outer.topleft, up.bottomleft), *map(min, outer.bottomright, down.bottomleft))
+            right = rectangle(*map(max, outer.topleft, up.topright), *map(min, outer.bottomright, down.topright))
+            return up, left, down, right
+
+        def __bool__(self):
+            return self.topleft[0] < self.bottomright[0] and self.topleft[1] < self.bottomright[1]
+
+        def __contains__(self, item):
+            x, y = item
+            return self.topleft[0] <= x < self.bottomright[0] and self.topleft[1] <= y < self.bottomright[1]
+
+    def find(space: rectangle, diamonds):
+        if space:
+            if not diamonds:
+                yield space
+            else:
+                up, left, down, right = diamonds[0].external(space)
+                yield from chain.from_iterable(find(r, diamonds[1:]) for r in diamonds[0].external(space))
+
+    warp = lambda x, y: (x - y, x + y)
+    unwarp = lambda x, y: ((x + y) // 2, (y - x) // 2)
+    data = [eval(f"(({m.group(1)},{m.group(2)}),({m.group(3)},{m.group(4)}))")
+            for m in re.finditer(r'x=(\d+), y=(\d+)\:[^x]*x=(-?\d+), y=(-?\d+)', open(filename).read())]
+    sensors = [warp(*sensor) for sensor, beacon in data]
+    beacons = {b for _, b in data}
+    halfsizes = [abs(sx - bx) + abs(sy - by) for (sx, sy), (bx, by) in data]
+
+    rs = [rectangle(sx - r, sy - r, sx + r + 1, sy + r + 1) for (sx, sy), r in zip(sensors, halfsizes)]
+    part1 = 0  # len(reduce(set.union, (d.void(2000000) for d in ds))) - sum(1 for x, y in beacons if y == 2000000)
+    emptyrects = (unwarp(*r.mid) for r in find(rectangle(-4000000, -4000000, 8000000, 8000000), rs))
+    x, y = next(filter(lambda p: p in rectangle(0, 0, 4000000, 4000000), emptyrects))
+    part2 = x * 4000000 + y
+
+    return part1, part2
+
+
+def day16(filename: str):
+    data = re.finditer(r'Valve ([^\s]+) has flow rate=(\d+); [\sa-z]+ ([^\n]+)', open(filename).read())
+    valves = {v: (int(rate), ws.split(', ')) for v, rate, ws in map(re.Match.groups, data)}
+    rates = {v: rate for v, (rate, _) in valves.items() if rate > 0}
+    distances = {(v, v): 0 for v in valves}
+
+    changes = 1
+    while changes:
+        changes = 0
+        for v, w in permutations(valves, 2):
+            distance = min(1 + distances.get((s, w), 1000) for s in valves[v][1])
+            changes += distance < distances.get((v, w), 1000)
+            distances[(v, w)] = distance
+
+    distances = {(v, w): distance + 1 for (v, w), distance in distances.items() if v != w}
+
+    def out_edges(node: ((str, str), (int, int)), unopened: set):
+        (v, w), (t1, t2) = node
+        yield from ((rates[u] * (t1 - distances[v, u]), (u, w), (t1 - distances[v, u], t2)) for u in unopened - {v} if
+                    distances[v, u] < t1 if u < w)
+        yield from ((rates[u] * (t2 - distances[w, u]), (v, u), (t1, t2 - distances[w, u])) for u in unopened - {w} if
+                    distances[w, u] < t2 if v < u)
+
+    def max_pressure(top_order: list[((str, str), (int, int))]) -> int:
+        pressures = dict()
+        remaining_valves = dict()
+        for (v1, v2), (t1, t2) in top_order:
+            pressure_v = pressures.get(((v1, v2), (t1, t2)), 0)
+            remaining_valves_v = remaining_valves.get(((v1, v2), (t1, t2)), rates.keys() - {v1, v2})
+            for pressure, (w1, w2), (tt1, tt2) in out_edges(((v1, v2), (t1, t2)), remaining_valves_v):
+                if pressure_v + pressure > pressures.get(((v1, v2), (tt1, tt2)), 0):
+                    pressures[((v1, v2), (tt1, tt2))] = pressure_v + pressure
+                    remaining_valves[((v1, v2), (tt1, tt2))] = remaining_valves_v - {w1, w2}
+        return max(pressures.values())
+
+    def top_order(start: str, time_left: int, succ_fun, visited: set[(str, int)] = set()):
+        visited.add((start, time_left))
+        result = []
+        for _, next_node, t in succ_fun((start, time_left), rates.keys()):
+            if (next_node, t) not in visited:
+                result = top_order(next_node, t, succ_fun, visited) + result
+        return [(start, time_left)] + result
+
+    part1 = 0
+    part1 = max_pressure(top_order(('AA', 'AA'), (0, 30), out_edges))
+    part2 = max_pressure(top_order(('AA', 'AA'), (26, 26), out_edges))
+    return part1, part2
+
+
+def day17(filename: str):
+    data = open(filename).read().strip()
+    rocks = [
+        [{0, 1, 2, 3}],
+        [{1}, {0, 1, 2}, {1}],
+        [{0, 1, 2}, {2}, {2}],
+        [{0}, {0}, {0}, {0}],
+        [{0, 1}, {0, 1}]
+    ]
+
+    def push_right(rock: list[set[int]]) -> list[set[int]]:
+        result = [{i + 1 for i in layer} for layer in rock]
+        return rock if max(max(layer) for layer in result) > 6 else result
+
+    def push_left(rock: list[set[int]]) -> list[set[int]]:
+        result = [{i - 1 for i in layer} for layer in rock]
+        return rock if min(min(layer) for layer in result) < 0 else result
+
+    def collide(xss: list[set[int]], yss: list[set[int]]) -> bool:
+        return any(map(set.intersection, xss, yss))
+
+    pile = [{0, 1, 2, 3, 4, 5, 6}]
+    jets, moves, dropped = cycle(data), 0, 0
+    visited = dict()
+    rock, height = push_right(push_right(rocks[0])), 4
+    for c in jets:
+        rock = push_left(rock) if c == '<' else push_right(rock)
+        moves += 1
+        if collide(rock, pile[height:height + len(rock)]):
+            rock = push_left(rock) if c == '>' else push_right(rock)
+        if collide(rock, pile[height - 1:height + len(rock) - 1]):
+            pile[height:height + len(rock)] = list(map(set.union, rock, pile[height:height + len(rock)] + 4 * [set()]))
+            dropped += 1
+            state = (moves % len(data), dropped % len(rocks))
+            if dropped == 2022:
+                part1 = len(pile)
+            if state in visited:
+                j, h = visited[state]
+                if (1000000000000 - dropped) % (dropped - j) == 0:
+                    part2 = len(pile) + ((1000000000000 - dropped) // (dropped - j)) * (len(pile) - h)
+                    if dropped > 2022:
+                        break
+            visited[state] = dropped, len(pile)
+            rock, height = push_right(push_right(rocks[dropped % len(rocks)])), len(pile) + 3
+        else:
+            height = height - 1
+    return part1 - 1, part2 - 1
+
+
+def day18(filename: str):
+    data = {eval(line) for line in open(filename).readlines()}
+    lo, hi = min(min(pt) for pt in data), max(max(pt) for pt in data)
+
+    def nbors(pt):
+        deltas = (xs for xs in product([-1, 0, 1], repeat=3) if sum(map(abs, xs)) == 1)
+        yield from (tuple(map(operator.add, pt, d)) for d in deltas)
+
+    def fill3d(pos: (int, int, int), visited: set, nborpred) -> int:
+        count = 0
+        queue = [(pos, nbors(pos))]
+        while queue:
+            p, it = queue[-1]
+            if p not in visited:
+                count += sum(s in data for s in nbors(p))
+            visited.add(p)
+            for s in filter(lambda p: (p not in visited) and nborpred(p), it):
+                queue.append((s, nbors(s)))
+                break
+            else:
+                queue.pop()
+        return count
+
+    def water_nbors(pt):
+        return pt not in data and lo - 1 <= min(pt) and max(pt) <= hi + 1
+
+    visited = set()
+    adjacent = 0
+    for point in data:
+        if point not in visited:
+            adjacent += fill3d(point, visited, lambda pt: pt in data)
+
+    part1 = len(visited) * 6 - adjacent
+    part2 = fill3d((lo - 1, lo - 1, lo - 1), set(), water_nbors)
+    return part1, part2
+
+
+def day19(filename: str):
+    Counts = collections.namedtuple("Counts", "ore, clay, obsidian, geode")
+    add_counts = lambda *xss: Counts(*(sum(xs) for xs in zip(*xss)))
+    mul_counts = lambda a, xs: Counts(*map(lambda x : a * x, xs))
+
+    xs = add_counts(Counts(1, 0, 0, 0), Counts(2, 1, 0, 0), Counts(3, 2, 1, 0))
+    arr = np.array([[0, 0, 0, 0]])
+    matches = (re.match(r'\D+' + 7 * r'(\d+)\D+', line).groups() for line in open(filename).readlines())
+
+    blueprints = [Counts(
+        Counts(int(ore), 0, 0, 0),
+        Counts(int(clay), 0, 0, 0),
+        Counts(int(o1), int(o2), 0, 0),
+        Counts(int(g1), 0, int(g2), 0))
+        for _, ore, clay, o1, o2, g1, g2 in matches]
+
+
+    def estimate_geodes(blueprint: Counts[Counts], time: int, active: Counts, resources: Counts) -> int:
+        pending = [0] * 4
+        available = [list(resources)] * 4
+        active = list(active)
+
+        result = 0
+        for t in range(0, time):
+            for i, p in enumerate(pending):
+                active[i] += pending[i]
+            for i, bp, counts in zip(count(0), blueprint, available):
+                pending[i] = min(1, min(c // v for v, c in zip(bp, counts) if v > 0))
+            for bp, counts, p in zip(blueprint, available, pending):
+
+            available = Counts(*(Counts(*(n - p * costs + a for n, costs, a in zip(counts, bp, active))) for bp, counts, p in zip(blueprint, available, pending)))
+            result += active[3]
+        return -(resources.geode + result)
+
+    def next_states(blueprint: dict, max_bots: Counter[str], time: int, active: Counter[str], resources: Counter[str]):
+        production = (Counts(1, 0, 0, 0), Counts(0, 1, 0, 0), Counts(0, 0, 1, 0), Counts(0, 0, 0, 1))
+        constructible = (all(avail > 0 for req, avail in zip(bp, active) if req > 0) for bp in blueprint)
+        sensible = (c and avail < upp for avail, upp, c in zip(active, max_bots, constructible))
+        delays = (max(0, 1 + max((req - avail - 1) // inc if inc > 0 else 0 for req, avail, inc in zip(bp, resources, active))) for bp in blueprint)
+        feasible = list((time - t - 1, add_counts(active, p), add_counts(resources, mul_counts(-1, bp), mul_counts(t + 1, active))) for t, s, p, bp in zip(delays, sensible, production, blueprint) if s and t < time)
+        infeasible = list((0, active, add_counts(resources, mul_counts(time, active))) for t, s in zip(delays, sensible) if s and t >= time)
+        yield from infeasible
+        yield from feasible
+        for bot in blueprint:
+            continue
+            if active[bot] >= max_bots[bot]:
+                continue
+            try:
+                t = max(0, 1 + max((amount - resources[res] - 1) // active[res] for res, amount in blueprint[bot].items()))
+                if t < time:
+                    yield time - t - 1, active + Counts({bot: 1}), Counter({
+                        res: resources[res] + active[res] * (t + 1) - blueprint[bot][res] for res in blueprint})
+                else:
+                    yield 0, active, Counter({res: resources[res] + active[res] * time for res in blueprint})
+            except ZeroDivisionError:
+                pass
+
+    def find_max_geodes(blueprint: Counts[Counts], time: int):
+        max_bots = Counts(*(max(res) for res in zip(*blueprint)))._replace(geode = time)
+        queue = Q.PriorityQueue()
+        start = (time, Counts(1, 0, 0, 0), Counts(0, 0, 0, 0))
+        queue.put_nowait( (estimate_geodes(blueprint, *start), start) )
+        result = 0
+        states = 0
+        while not queue.empty():
+            states += 1
+            est, state = queue.get_nowait()
+            if -est < result:
+                break
+            for s in next_states(blueprint, max_bots, *state):
+                t, active, resources = s
+                result = max(result, resources.geode)
+                if t > 0:
+                    queue.put_nowait( (estimate_geodes(blueprint, *s), s) )
+
+        return result
+
+    xs = [find_max_geodes(bp, 24) for bp in blueprints]
+    ys = [find_max_geodes(bp, 32) for bp in blueprints]
+    part1 = sum((i + 1) * find_max_geodes(bp, 24) for i, bp in enumerate(blueprints))
+    part2 = reduce(operator.mul, (find_max_geodes(bp, 32) for bp in blueprints[:3]))
+    return part1, part2
+
+
+def day20(filename: str):
+    # list -> index ->
+    data = [(idx, int(line.strip())) for idx, line in enumerate(open(filename).readlines())]
+    encrypted = [i for i, _ in enumerate(data)]
+    n = len(data)
+
+    def move(i):
+        idx, val = data[i % n]
+        new_idx = (idx + val) % (n - 1)
+        data[i % n] = new_idx, val
+
+        encrypted[(idx + val) % (n - 1)] = i
+        for j, (k, v) in enumerate(data):
+            if (j != i) and idx < k <= new_idx:
+                data[j] = (k - 1) % n, v
+            elif (j != i) and new_idx <= k <= idx:
+                data[j] = (k + 1) % n, v
+
+    for i in range(len(data)):
+        move(i)
+
+    # build permutation
+    permutation = {i: j for i, (j, _) in enumerate(data)}
+
+    poss = {idx: val for idx, val in data}
+    idx = next(i for i, v in data if v == 0)
+    part1 = sum(poss[(idx + k * 1000) % n] for k in range(1, 4))
+
+    return part1, 0
+
+
+def day21(filename: str):
+    matches = [re.match(r'(\w+)\: (?:(-?\d+)|(?:(\w+) (.) (\w+)))', line.strip()).groups() for line in
+               open(filename).readlines()]
+    values = {name: int(value) if value is not None else (left, op, right) for name, value, left, op, right in matches}
+
+    def evaluate(name: str):
+        rhs = values[name]
+        if type(rhs) is not tuple:
+            return rhs
+        else:
+            left, op, right = rhs
+            result = eval(f'evaluate(left) {op} evaluate(right)',
+                          dict(left=left, right=right, op=op, evaluate=evaluate))
+            # values[name] = result
+            return result
+
+    part1 = evaluate('root')
+
+    x = symbols('x')
+    # values = {name: int(value) if value is not None else (left, op, right) for name, value, left, op, right in matches}
+    values['humn'] = x
+    left, _, right = values['root']
+    _, solution = sympy.solve_linear(evaluate(left), evaluate(right), [x])
+    return int(part1), int(solution)
+
+
+def day22(filename: str):
+    board, path = open(filename).read().split('\n\n')
+    tiles = {(row + 1, col + 1): c for row, line in enumerate(board.split('\n')) for col, c in enumerate(line) if
+             c in '.#'}
+    walls = {pos for pos, ch in tiles.items() if ch == '#'}
+
+    def left(row, col):
+        col_new = max(c for r, c in tiles if r == row) if (row, col - 1) not in tiles else col - 1
+        return (row, col) if (row, col_new) in walls else (row, col_new)
+
+    def right(row, col):
+        col_new = min(c for r, c in tiles if r == row) if (row, col + 1) not in tiles else col + 1
+        return (row, col) if (row, col_new) in walls else (row, col_new)
+
+    def down(row, col):
+        row_new = min(r for r, c in tiles if c == col) if (row + 1, col) not in tiles else row + 1
+        return (row, col) if (row_new, col) in walls else (row_new, col)
+
+    def up(row, col):
+        row_new = max(r for r, c in tiles if c == col) if (row - 1, col) not in tiles else row - 1
+        return (row, col) if (row_new, col) in walls else (row_new, col)
+
+    position = 1, min(col for row, col in tiles if row == 1)
+    direction = dict(right=dict(R="down", L="up", score=0),
+                     down=dict(R="left", L="right", score=1),
+                     left=dict(R="up", L="down", score=2),
+                     up=dict(R="right", L="left", score=3))
+
+    facing = "up"
+    test = list(map(re.Match.groups, re.finditer(r'(R|L)(\d+)', 'R' + path)))
+    for turn, steps in test:
+        facing = direction[facing][turn]
+        for _ in range(int(steps)):
+            position = up(*position) if facing == "up" else down(*position) if facing == "down" else left(
+                *position) if facing == "left" else right(*position)
+
+    row, col = position
+    part1 = 1000 * row + 4 * col + direction[facing]["score"]
+    return part1, 0
+
+
+def day23(filename: str):
+    data = open(filename).readlines()
+    elves = {(row, col) for row, line in enumerate(data) for col, c in enumerate(line.strip()) if c == '#'}
+
+    def nbors(positions, row, col):
+        return {(row + r, col + c) for r, c in product([-1, 0, 1], repeat=2) if
+                abs(r) + abs(c) != 0 and (row + r, col + c) in positions}
+
+    def move(positions, row, col, index):
+        ns = nbors(positions, row, col)
+        if not ns:
+            return False, (row, col)
+        proposed = [
+            lambda: (row - 1, col) if not ns & {(row - 1, col), (row - 1, col + 1), (row - 1, col - 1)} else None,
+            lambda: (row + 1, col) if not ns & {(row + 1, col), (row + 1, col + 1), (row + 1, col - 1)} else None,
+            lambda: (row, col - 1) if not ns & {(row, col - 1), (row - 1, col - 1), (row + 1, col - 1)} else None,
+            lambda: (row, col + 1) if not ns & {(row, col + 1), (row - 1, col + 1), (row + 1, col + 1)} else None]
+        for i in range(4):
+            target = proposed[(index + i) % 4]()
+            if target is not None:
+                return True, target
+        return False, (row, col)
+
+    def round(index, positions: set[(int, int)]) -> set[(int, int)]:
+        changes = {pos: move(positions, *pos, index) for pos in positions}
+        if any(changed for changed, _ in changes.values()):
+            clashes = Counter(target for _, target in changes.values())
+            return {pos if clashes[target] > 1 else target for pos, (_, target) in changes.items()}
+        else:
+            return None
+
+    i = 0
+    positions = round(i, elves)
+    while positions:
+        i += 1
+        if i == 10:
+            maxr, minr = max(r for r, c in positions), min(r for r, c in positions)
+            maxc, minc = max(c for r, c in positions), min(c for r, c in positions)
+            part1 = (maxr - minr + 1) * (maxc - minc + 1) - len(positions)
+        positions = round(i, positions)
+
+    part2 = i + 1
+
+    return part1, part2
+
+
+def day24(filename: str):
+    lines = open(filename).readlines()
+    data = {(row - 1, col - 1): c for row, line in enumerate(lines) for col, c in enumerate(line.strip())}
+    width, height = max(col for row, col in data), max(row for row, col in data)
+    lcm = math.lcm(width, height)
+    all_nrs = set(range(2 * lcm))
+
+    def merge_ranges(ranges: list[int]) -> list[(int, int)]:
+        it = iter(ranges)
+        a = next(it)
+        b = a + 1
+        result = list()
+        for c in it:
+            if b < c:
+                result.append((a, b))
+                a, b = c, c + 1
+            else:
+                b = c + 1
+        result.append((a, b))
+        return result
+
+    def blizzard_times(row: int, col: int) -> list[(int, int)]:
+        lefts = set(((c - col) % width, width) for (r, c), ch in data.items() if r == row and ch == '<')
+        rights = set(((col - c) % width, width) for (r, c), ch in data.items() if r == row and ch in '>')
+        ups = set(((r - row) % height, height) for (r, c), ch in data.items() if c == col and ch in '^')
+        downs = set(((row - r) % height, height) for (r, c), ch in data.items() if c == col and ch in 'v')
+        blocked = set(b for a, m in lefts | rights | ups | downs for b in range(a, 2 * lcm, m))
+        return merge_ranges(sorted(all_nrs - blocked))
+
+    blizzards = {pos: blizzard_times(*pos) for pos, ch in data.items() if ch != '#'}
+
+    def free_interval(row: int, col: int, time: int):
+        intervals = blizzards[(row, col)]
+        # find interval
+        lo, hi = 0, len(intervals)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            a, b = intervals[mid]
+            if a <= time < b:
+                return a, b
+            elif time < a:
+                hi = mid
+            else:
+                lo = mid + 1
+        return intervals[lo]
+
+    def neighbours(row: int, col: int, time: int):
+        _, until = free_interval(row, col, time)
+        adjacent = filter(lambda pos: data.get(pos, '#') != '#',
+                          ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)))
+        for r, c in adjacent:
+            soonest, _ = free_interval(r, c, time + 1)
+            if soonest <= until:
+                yield max(soonest - time, 1), (r, c)
+
+    def find_path(time: int, start: (int, int), finish: (int, int)) -> int:
+        visited = set()
+        queue = Q.PriorityQueue()
+        queue.put_nowait((time, start))
+        while queue:
+            time, (row, col) = queue.get_nowait()
+            if (time, (row, col)) in visited:
+                continue
+            visited.add((time, (row, col)))
+            if (row, col) == finish:
+                return time
+            for dt, pos in neighbours(row, col, time % lcm):
+                queue.put_nowait((time + dt, pos))
+
+    part1 = find_path(0, (-1, 0), (height, width - 1))
+    back = find_path(part1, (height, width - 1), (-1, 0))
+    part2 = find_path(back, (-1, 0), (height, width - 1))
+    return part1, part2
+
+
+def day25(filename: str):
+    data = open(filename).read().split('\n')
+    dec2snafu = {2: '2', 1: '1', 0: '0', -1: '-', -2: '='}
+    snafu2dec = {'2': 2, '1': 1, '0': 0, '-': -1, '=': -2}
+
+    def to_snafu(nr: int) -> str:
+        digits = list()
+        while nr > 0:
+            digits = [(nr + 2) % 5 - 2] + digits
+            nr = (nr + 2) // 5
+        return ''.join(dec2snafu[digit] for digit in digits)
+
+    def to_dec(snafu: str) -> int:
+        return reduce(lambda nr, c: nr * 5 + snafu2dec[c], snafu, 0)
+
+    return to_snafu(sum(to_dec(line) for line in data)), None
+
+
 if __name__ == '__main__':
     solvers = [(key, value) for key, value in globals().items() if key.startswith("day") and callable(value)]
     solvers = sorted(((int(key.split('day')[-1]), value) for key, value in solvers), reverse=True)
 
-    for idx, solver in solvers:
+    for idx, solver in reversed(solvers):
+        if idx != 19:
+            continue
+        ns1 = time.process_time_ns()
         p1, p2 = solver(f"input/day{idx}.txt")
-        print(f"day {idx} - part 1: {p1}, part 2: {p2}")
+        ns2 = time.process_time_ns()
+        print(f"day {idx} - part 1: {p1}, part 2: {p2}. time: {(ns2 - ns1) * 1e-9} seconds")
+        # break
